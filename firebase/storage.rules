@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isOperator() {
+      return isSignedIn() && role() == 'operator';
+    }
+
+    // Scanned Solutions Store (de-identified crops) — operator uploads,
+    // annotators/adjudicators may view the crop for their assigned item.
+    match /scanned_pages/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOperator();
+    }
+
+    // Model checkpoints mirrored to Storage from Google Drive (Figure H-1);
+    // read-only to authenticated clients, written by training jobs/CI only.
+    match /model_checkpoints/{allPaths=**} {
+      allow read: if isOperator();
+      allow write: if false;
+    }
+  }
+}

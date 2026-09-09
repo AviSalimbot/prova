@@ -1,0 +1,45 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "run_id", "order": "ASCENDING" },
+        { "fieldPath": "generated_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "annotator_labels",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "annotator_id", "order": "ASCENDING" },
+        { "fieldPath": "labeled_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "annotator_labels",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "item_id", "order": "ASCENDING" },
+        { "fieldPath": "labeled_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "results",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "run_id", "order": "ASCENDING" },
+        { "fieldPath": "item_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "items",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "page_id", "order": "ASCENDING" },
+        { "fieldPath": "item_number", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

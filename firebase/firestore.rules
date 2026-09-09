@@ -1,0 +1,163 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =====================================================================
+    // HELPERS
+    // =====================================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userExists() {
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isActiveUser() {
+      return userExists() && userDoc().status == 'active';
+    }
+
+    function role() {
+      return userDoc().role;
+    }
+
+    function isAdmin() {
+      return isActiveUser() && role() == 'admin';
+    }
+
+    function isAnnotator() {
+      return isActiveUser() && role() == 'annotator';
+    }
+
+    function isAdjudicator() {
+      return isActiveUser() && role() == 'adjudicator';
+    }
+
+    function isValidRole(r) {
+      return r in ['pending', 'admin', 'annotator', 'adjudicator'];
+    }
+
+    function isValidStatus(s) {
+      return s in ['pending', 'active', 'deleted'];
+    }
+
+    // =====================================================================
+    // users
+    // =====================================================================
+    match /users/{userId} {
+
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      allow create: if isSignedIn()
+                     && request.auth.uid == userId
+                     && request.resource.data.role == 'pending'
+                     && request.resource.data.status == 'pending';
+
+      // Any user edits their own doc; only admin edits others.
+      allow update: if (request.auth.uid == userId)
+                     || (isAdmin()
+                         && request.auth.uid != userId
+                         && isValidRole(request.resource.data.role)
+                         && isValidStatus(request.resource.data.status));
+
+      allow delete: if isAdmin() && request.auth.uid != userId;
+    }
+
+    // =====================================================================
+    // exams / pages / items
+    // =====================================================================
+    match /exams/{examId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /pages/{pageId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /items/{itemId} {
+      allow read: if isAdmin() || isAnnotator() || isAdjudicator();
+      allow write: if isAdmin();
+    }
+
+    // =====================================================================
+    // runs
+    // =====================================================================
+    match /runs/{runId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // =====================================================================
+    // results (predicted labels)
+    // =====================================================================
+    match /results/{resultId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // =====================================================================
+    // annotator_labels
+    // =====================================================================
+    match /annotator_labels/{labelId} {
+      allow read: if isAdmin()
+                   || isAdjudicator()
+                   || (isAnnotator() && resource.data.annotator_id == request.auth.uid);
+      allow create: if isAnnotator() && request.resource.data.annotator_id == request.auth.uid;
+      allow update: if isAnnotator() && resource.data.annotator_id == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // =====================================================================
+    // gold_standard_labels
+    // =====================================================================
+    match /gold_standard_labels/{itemId} {
+      allow read: if isAdmin() || isAdjudicator();
+      allow create, update: if isAdjudicator() || isAdmin();
+      allow delete: if false;
+    }
+
+    // =====================================================================
+    // reports / model_versions / retraining_cycles
+    // =====================================================================
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /model_versions/{versionId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /retraining_cycles/{cycleId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // =====================================================================
+    // logs (system-only)
+    // =====================================================================
+    match /logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // =====================================================================
+    // participants
+    // =====================================================================
+    match /participants/{studentCode} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+  }
+}

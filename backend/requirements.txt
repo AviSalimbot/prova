@@ -1,0 +1,27 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# Firebase Admin (Firestore + Storage) — trusted backend access, bypasses
+# firestore.rules by design.
+firebase-admin==6.6.0
+
+# Recognition layer (Figure 1 / Figure 6)
+torch==2.5.1
+transformers==4.46.3
+peft==0.13.2          # LoRA adaptation of TrOCR
+Pillow==11.0.0
+
+# Classification layer (Figure 2 / Figure 8)
+scikit-learn==1.5.2
+
+# Evaluation (Figure 4 / Figure 10)
+numpy==2.0.2
+statsmodels==0.14.4    # Wilson confidence interval
+
+# Image preprocessing (Figure H-1: Crop, Deskew, Denoise, Binarize, Resize)
+opencv-python-headless==4.10.0.84
+
+python-multipart==0.0.17
+python-dotenv==1.0.1
