@@ -37,7 +37,7 @@ exists.
 
 ```bash
 cd flutter_app
-flutter run -d chrome --dart-define=BACKEND_BASE_URL=http://localhost:8000
+flutter run -d chrome --web-port=58398 --dart-define=BACKEND_BASE_URL=http://localhost:8000
 ```
 
 ### 4. Reference the existing mockup

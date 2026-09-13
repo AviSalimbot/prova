@@ -1,11 +1,16 @@
+// lib/features/auth/presentation/register_screen.dart
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../assessments/data/drive_auth_service.dart';
 import '../data/auth_repository.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -29,6 +34,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   // with role 'pending' + status 'pending' (the only shape the Firestore
   // rules allow a client to self-create). An admin approves it from
   // Administration > Users & Roles.
+  //
+  // This applies identically whether the account is created via
+  // email/password (_submit) or Google (_startGoogleSignUp /
+  // _completeGoogleSignUp) — both paths read _selectedRole at submit
+  // time and send it as the requested role. There's no path that
+  // creates an account without one, since the dropdown always has a
+  // value (_selectedRole starts non-null and the UI never lets it
+  // become null).
   final List<String> _roles = const [
     'Researcher / Operator',
     'Course Instructor',
@@ -46,8 +59,32 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   String? _error;
   bool _loading = false;
 
+  // Web-only: fires once the rendered Google iframe button completes a
+  // sign-in, since that button has no onPressed callback of its own.
+  StreamSubscription<bool>? _googleSignInSub;
+
+  // Gates rendering the Google button until the SDK is initialized —
+  // required on web before the iframe button has anything to attach
+  // to. ensureReady() never prompts anything itself, unlike
+  // trySilentSignIn(), so this is safe to fire immediately.
+  late final Future<void> _driveReadyFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    final driveAuth = ref.read(driveAuthServiceProvider);
+    _driveReadyFuture = driveAuth.ensureReady();
+
+    if (kIsWeb) {
+      _googleSignInSub = driveAuth.onSignInChanged.listen((signedIn) {
+        if (signedIn) _completeGoogleSignUp();
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _googleSignInSub?.cancel();
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -79,19 +116,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             _roleValues[_selectedRole]!,
           );
 
-      // signUp() already signs the new account back out — it can't be
-      // used until its role is approved. Route to login with a notice
-      // instead of relying on authStateProvider to redirect into the app.
-      if (!mounted) return;
-
-      ref.read(pendingNoticeProvider.notifier).state =
-          'Account created — pending approval\n\n'
-          'Your account has been created successfully. An administrator '
-          'needs to activate it before you can sign in. You\'ll receive '
-          'an email as soon as your account is ready — this usually '
-          'doesn\'t take long. Thanks for your patience.';
-
-      context.go('/login');
+      _goToPendingLogin();
     } on FirebaseAuthException catch (e) {
       // Friendlier copy than the raw exception's toString().
       setState(() => _error = e.message ?? e.code);
@@ -106,6 +131,95 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Native/desktop path: pops Google's interactive account picker,
+  /// then completes sign-up with the currently selected requested role.
+  /// Mirrors LoginScreen's _startGoogleSignIn shape, but calls
+  /// signUpWithGoogle (which errors on an already-existing profile
+  /// instead of silently falling through to a pending-notice sign-in).
+  Future<void> _startGoogleSignUp() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final driveAuth = ref.read(driveAuthServiceProvider);
+      await driveAuth.signInInteractively();
+      await ref.read(authRepositoryProvider).signUpWithGoogle(
+            _roleValues[_selectedRole]!,
+            driveAuth,
+          );
+      _goToPendingLogin();
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() => _error = e.message ?? e.code);
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        setState(
+          () => _error =
+              'Account was created, but saving the user profile failed: '
+              '${e.message ?? e.code}',
+        );
+      }
+    } on Exception catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Web path: called once the rendered Google button's own sign-in
+  /// completes (see onSignInChanged listener in initState) — the
+  /// account is already authenticated by that point, so this just runs
+  /// the Firebase + profile-creation half of the flow with the
+  /// currently selected requested role.
+  Future<void> _completeGoogleSignUp() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final driveAuth = ref.read(driveAuthServiceProvider);
+      await ref.read(authRepositoryProvider).signUpWithGoogle(
+            _roleValues[_selectedRole]!,
+            driveAuth,
+          );
+      _goToPendingLogin();
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() => _error = e.message ?? e.code);
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        setState(
+          () => _error =
+              'Account was created, but saving the user profile failed: '
+              '${e.message ?? e.code}',
+        );
+      }
+    } on Exception catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _goToPendingLogin() {
+    // signUp()/signUpWithGoogle() already sign the new account back out
+    // — it can't be used until its role is approved. Route to login
+    // with a notice instead of relying on authStateProvider to redirect
+    // into the app.
+    if (!mounted) return;
+
+    ref.read(pendingNoticeProvider.notifier).state =
+        'Account created — pending approval\n\n'
+        'Your account has been created successfully. An administrator '
+        'needs to activate it before you can sign in. You\'ll receive '
+        'an email as soon as your account is ready — this usually '
+        'doesn\'t take long. Thanks for your patience.';
+
+    context.go('/login');
   }
 
   InputDecoration _fieldDecoration(String hint) {
@@ -134,6 +248,87 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         text,
         style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 12),
       );
+
+  /// Mirrors LoginScreen's _buildGoogleSection: renders Google's own
+  /// iframe button on web (completion handled by the onSignInChanged
+  /// listener in initState) or a normal OutlinedButton on native/desktop
+  /// that drives the interactive picker directly.
+  ///
+  /// NOTE: passes `text: 'signup_with'` so the rendered Google button
+  /// reads "Sign up with Google" instead of "Sign in with Google" (the
+  /// screenshot showed the sign-in label here). This assumes
+  /// buildSignInButton() accepts a `text` parameter that's forwarded to
+  /// Google Identity Services' renderButton `text` option (valid values:
+  /// 'signin_with', 'signup_with', 'continue_with', 'signin'). If
+  /// buildSignInButton() doesn't yet take that parameter, it needs a
+  /// small addition in drive_auth_service.dart — happy to wire that up
+  /// if you share that file.
+  Widget _buildGoogleSection() {
+    return FutureBuilder<void>(
+      future: _driveReadyFuture,
+      builder: (context, snapshot) {
+        final ready = snapshot.connectionState == ConnectionState.done;
+
+        if (!ready) {
+          return const SizedBox(
+            height: 40,
+            child: Center(
+              child: SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+
+        if (kIsWeb) {
+          return Center(
+            child: ref.read(driveAuthServiceProvider).buildSignInButton(
+                  text: 'signup_with',
+                ),
+          );
+        }
+
+        return SizedBox(
+          width: double.infinity,
+          height: 40,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF1A2433),
+              side: const BorderSide(color: Color(0xFFD9DEE3)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: _loading ? null : _startGoogleSignUp,
+            icon: _loading
+                ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF1A2433),
+                    ),
+                  )
+                : Image.network(
+                    'https://www.google.com/favicon.ico',
+                    width: 16,
+                    height: 16,
+                  ),
+            label: Text(
+              'Sign up with Google',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF1A2433),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -227,7 +422,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Role dropdown
+                  // Role dropdown — required for BOTH the email/password
+                  // path and the Google path below. It's placed before
+                  // both submit actions and defaults to a real value
+                  // (never null), so there's no way to create an account
+                  // — via either method — without a requested role.
                   _label('Role'),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<String>(
@@ -355,6 +554,44 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             ),
                     ),
                   ),
+
+                  const SizedBox(height: 16),
+
+                  // "or" divider between the email/password flow and
+                  // Google — both still gate on the same Role dropdown
+                  // above, so this isn't a way to skip setting a role.
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Divider(color: Colors.grey.shade300),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Text(
+                          'or',
+                          style: GoogleFonts.inter(
+                            color: Colors.grey,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Divider(color: Colors.grey.shade300),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Continue with Google — creates the account with
+                  // whatever role is currently selected above, same as
+                  // the email/password button does. Delegates to
+                  // _buildGoogleSection so web gets the real Google
+                  // iframe button (same as LoginScreen) instead of a
+                  // button that can't actually complete auth, and shows
+                  // the sign-up-flavored label.
+                  _buildGoogleSection(),
+
                   const SizedBox(height: 12),
 
                   // "Already have an account? Sign in" -> back to login

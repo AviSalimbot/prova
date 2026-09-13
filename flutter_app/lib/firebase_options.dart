@@ -60,7 +60,6 @@ class DefaultFirebaseOptions {
     projectId: 'prova-7b84d',
     storageBucket: 'prova-7b84d.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDga_kYF_crh6hemfAfy54gms_02EzFhEE',
     appId: '1:848916890161:ios:ec0f8f0f9fa7585a72cb10',
@@ -69,7 +68,6 @@ class DefaultFirebaseOptions {
     storageBucket: 'prova-7b84d.firebasestorage.app',
     iosBundleId: 'com.prova.app',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyDga_kYF_crh6hemfAfy54gms_02EzFhEE',
     appId: '1:848916890161:ios:ec0f8f0f9fa7585a72cb10',

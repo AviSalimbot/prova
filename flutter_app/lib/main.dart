@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 
 import 'core/routing/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'features/assessments/data/drive_auth_service.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -23,6 +24,15 @@ class ProvaApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
+
+    // Fire-and-forget: kicks off the Drive silent-session restore once,
+    // as early as possible, so by the time the person navigates to
+    // Assessments it's already resolved (or in flight) instead of each
+    // screen racing its own attempt. This is unrelated to Firebase
+    // Auth — see DriveAuthService's doc comment — so it's fine to fire
+    // in parallel with the rest of app startup rather than being
+    // awaited before runApp.
+    ref.watch(driveSessionRestoreProvider);
 
     return MaterialApp.router(
       title: 'PROVA',

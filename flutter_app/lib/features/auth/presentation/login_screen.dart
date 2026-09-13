@@ -1,9 +1,15 @@
+// lib/features/auth/presentation/login_screen.dart
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../assessments/data/drive_auth_service.dart';
+import '../../assessments/presentation/drive_connect.dart';
 import '../data/auth_repository.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -18,28 +24,108 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   String? _error;
   bool _loading = false;
+  bool _connectingDrive = false;
 
-  Future<void> _submit() async {
-    // Clear any pending-approval notice as soon as the person tries to
-    // sign in again — if they're still not approved, signIn() throws
-    // AccountPendingException and _error will show the same message.
+  // Web-only: fires once the rendered Google iframe button completes a
+  // sign-in, since that button has no onPressed callback of its own.
+  StreamSubscription<bool>? _googleSignInSub;
+
+  // Gates rendering the Google button until the SDK is initialized —
+  // required on web before the iframe button has anything to attach
+  // to. ensureReady() never prompts anything itself, unlike
+  // trySilentSignIn(), so this is safe to fire immediately.
+  late final Future<void> _driveReadyFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    final driveAuth = ref.read(driveAuthServiceProvider);
+    _driveReadyFuture = driveAuth.ensureReady();
+
+    if (kIsWeb) {
+      _googleSignInSub = driveAuth.onSignInChanged.listen((signedIn) {
+        if (signedIn) _completeGoogleSignIn();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _googleSignInSub?.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitPassword() async {
     ref.read(pendingNoticeProvider.notifier).state = null;
-
     setState(() {
       _loading = true;
       _error = null;
     });
+
     try {
       await ref.read(authRepositoryProvider).signIn(
             _emailController.text.trim(),
             _passwordController.text,
           );
-      // Router redirects automatically once authStateProvider emits.
-      // If the account's role is still 'pending', signIn() itself signs
-      // the session back out and throws AccountPendingException, so
-      // authStateProvider never emits and we fall into the catch below.
+
+      // Email/password sign-in doesn't touch Drive on its own — chain
+      // the same connect step Google sign-in gets for free, so both
+      // paths land in the app already Drive-connected where possible.
+      if (mounted) {
+        setState(() => _connectingDrive = true);
+        await ensureDriveConnected(context, ref);
+      }
     } on Exception catch (e) {
       setState(() => _error = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _connectingDrive = false;
+        });
+      }
+    }
+  }
+
+  /// Native/desktop path: pops Google's interactive account picker,
+  /// then completes the unified sign-in.
+  Future<void> _startGoogleSignIn() async {
+    ref.read(pendingNoticeProvider.notifier).state = null;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final driveAuth = ref.read(driveAuthServiceProvider);
+      await driveAuth.signInInteractively();
+      await ref.read(authRepositoryProvider).signInWithGoogle(driveAuth);
+    } on Exception catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Web path: called once the rendered Google button's own sign-in
+  /// completes (see onSignInChanged listener in initState) — the
+  /// account is already authenticated by that point, so this just
+  /// runs the Firebase + profile-approval half of the flow.
+  Future<void> _completeGoogleSignIn() async {
+    if (!mounted) return;
+    ref.read(pendingNoticeProvider.notifier).state = null;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final driveAuth = ref.read(driveAuthServiceProvider);
+      await ref.read(authRepositoryProvider).signInWithGoogle(driveAuth);
+    } on Exception catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -64,6 +150,57 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         borderRadius: BorderRadius.circular(8),
         borderSide: const BorderSide(color: Color(0xFF3A7A4E), width: 1.5),
       ),
+    );
+  }
+
+  Widget _buildGoogleSection() {
+    return FutureBuilder<void>(
+      future: _driveReadyFuture,
+      builder: (context, snapshot) {
+        final ready = snapshot.connectionState == ConnectionState.done;
+
+        if (!ready) {
+          return const SizedBox(
+            height: 40,
+            child: Center(
+              child: SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+
+        if (kIsWeb) {
+          // Google's own rendered button (an iframe) — completion is
+          // handled by the onSignInChanged listener set up in
+          // initState, not by anything here.
+          return Center(
+            child: ref.read(driveAuthServiceProvider).buildSignInButton(),
+          );
+        }
+
+        return SizedBox(
+          width: double.infinity,
+          height: 40,
+          child: OutlinedButton.icon(
+            onPressed: _loading ? null : _startGoogleSignIn,
+            icon: const Icon(Icons.login, size: 18),
+            label: Text(
+              'Continue with Google',
+              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF1A2433),
+              side: const BorderSide(color: Color(0xFFD9DEE3)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -122,6 +259,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 14),
 
+                // Email/password fields now come FIRST, matching
+                // RegisterScreen's layout (fields -> primary submit ->
+                // divider -> Google section).
                 Text(
                   'Email',
                   style: GoogleFonts.inter(
@@ -133,6 +273,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   style: GoogleFonts.inter(fontSize: 14),
                   decoration: _fieldDecoration('you@example.com'),
                   keyboardType: TextInputType.emailAddress,
+                  enabled: !_loading,
                 ),
                 const SizedBox(height: 14),
                 Text(
@@ -146,6 +287,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   style: GoogleFonts.inter(fontSize: 14),
                   decoration: _fieldDecoration('••••••••'),
                   obscureText: true,
+                  enabled: !_loading,
+                  onSubmitted: (_) {
+                    if (!_loading) _submitPassword();
+                  },
                 ),
                 if (_error != null || notice != null) ...[
                   const SizedBox(height: 8),
@@ -154,6 +299,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           color: const Color(0xFFB86A1E), fontSize: 11)),
                 ],
                 const SizedBox(height: 16),
+
+                // Primary "Sign in" button
                 SizedBox(
                   width: double.infinity,
                   height: 40,
@@ -164,15 +311,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    onPressed: _loading ? null : _submit,
+                    onPressed: _loading ? null : _submitPassword,
                     child: _loading
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(
+                                height: 16,
+                                width: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              if (_connectingDrive) ...[
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Connecting Drive…',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ],
                           )
                         : Text(
                             'Sign in',
@@ -183,6 +346,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                   ),
                 ),
+
+                const SizedBox(height: 16),
+
+                // "or" divider — now sits between the email/password
+                // flow and Google, same position as RegisterScreen.
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: Colors.grey.shade300)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(
+                        'or',
+                        style: GoogleFonts.inter(color: Colors.grey, fontSize: 11),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey.shade300)),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Google sign-in section moved below the primary button.
+                _buildGoogleSection(),
+
                 const SizedBox(height: 12),
                 Center(
                   child: RichText(
@@ -197,7 +384,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             fontWeight: FontWeight.w700,
                           ),
                           recognizer: TapGestureRecognizer()
-                            // CHANGED: was a no-op TODO, now routes to /register
                             ..onTap = () => context.go('/register'),
                         ),
                       ],
