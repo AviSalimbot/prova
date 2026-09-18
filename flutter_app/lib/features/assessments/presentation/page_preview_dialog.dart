@@ -179,6 +179,10 @@ class _PageThumbnail extends ConsumerWidget {
 /// - Plain [Dialog] instead of [AlertDialog] so the header and footer
 ///   rows can be given their own tight padding instead of inheriting
 ///   AlertDialog's generous default title/actions insets.
+/// - Warm off-white background (_kDialogBg) instead of stark white, to
+///   match the app's card styling elsewhere.
+/// - Corner radius pulled down to _kDialogRadius (12) — the Material 3
+///   default (28) read as too "bubbly" next to the rest of the UI.
 /// - White background, explicit and taller [SizedBox] so the image has
 ///   real room instead of being squeezed into a 500x500 square.
 /// - Title text is smaller; "Raw"/variant label is pulled out into its
@@ -188,6 +192,9 @@ class _PageThumbnail extends ConsumerWidget {
 ///   cropped to fill a fixed box.
 /// - Wrapped in InteractiveViewer so the person can pinch/scroll-zoom
 ///   and pan to read fine handwriting.
+/// - Footer "Close" is now a solid dark filled button (matching the
+///   app's primary-action styling) instead of a bare TextButton, and
+///   is left-aligned rather than trailing.
 class PagePreviewDialog extends ConsumerWidget {
   const PagePreviewDialog({
     super.key,
@@ -200,13 +207,24 @@ class PagePreviewDialog extends ConsumerWidget {
   final AssessmentPage page;
   final ScanVariant variant;
 
+  // Warm off-white background used across the dialog and its dividers.
+  static const Color _kDialogBg = Color(0xFFFAF9F4);
+  // Dark filled button color for the "Close" action.
+  static const Color _kCloseButtonColor = Color(0xFF1F2430);
+  static const double _kDialogRadius = 12;
+  static const double _kChipRadius = 6;
+  static const double _kButtonRadius = 8;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fileId = page.fileIdFor(variant);
     final screenSize = MediaQuery.of(context).size;
 
     return Dialog(
-      backgroundColor: Colors.white,
+      backgroundColor: _kDialogBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_kDialogRadius),
+      ),
       child: SizedBox(
         width: 450,
         // Taller than the old fixed 500, and capped relative to the
@@ -245,7 +263,7 @@ class PagePreviewDialog extends ConsumerWidget {
                     ),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(_kChipRadius),
                     ),
                     child: Text(
                       variant.label,
@@ -259,7 +277,7 @@ class PagePreviewDialog extends ConsumerWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, color: Colors.white),
+            Divider(height: 1, color: _kDialogBg),
             Expanded(
               child: fileId == null
                   ? Center(
@@ -269,24 +287,40 @@ class PagePreviewDialog extends ConsumerWidget {
                     )
                   : _PreviewImage(fileId: fileId),
             ),
-            const Divider(height: 1, color: Colors.white),
-            // Footer row: same tight-padding treatment as the header,
-            // instead of AlertDialog's default actions insets.
+            Divider(height: 1, color: _kDialogBg),
+            // Footer row: solid dark "Close" button, left-aligned, to
+            // match the reference styling instead of a trailing
+            // TextButton.
             Padding(
               padding: const EdgeInsets.only(
-                left: 12,
+                left: 16,
                 right: 12,
-                top: 4,
-                bottom: 8,
+                top: 8,
+                bottom: 12,
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      'Close',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                  Material(
+                    color: _kCloseButtonColor,
+                    borderRadius: BorderRadius.circular(_kButtonRadius),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(_kButtonRadius),
+                      onTap: () => Navigator.pop(context),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          'Close',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],

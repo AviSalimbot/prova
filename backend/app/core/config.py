@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # Google Drive / HF Model Hub (Figure H-1 hardware row)
     model_cache_dir: str = "./model_cache"
 
+    # Drive root folder IDs for the Raw -> Cleaned pipeline (must match
+    # DriveImportService._rootFolderIds on the Flutter side)
+    drive_raw_root_folder_id: str = "1ylUs0CO615F0XaM4C2Kp91r117xZ3PhC"
+    drive_cleaned_root_folder_id: str = "14gWHkrzUUhTU2eR_00P3f9k1Zghl6W0X"
+    drive_cropped_root_folder_id: str = "15vsMICDGFpvxH9sGDBvdXhcuioBYBeJO"
+
     cors_allow_origins: list[str] = ["http://localhost:*"]
 
 

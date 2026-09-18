@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../../../core/widgets/header_banner.dart';
 import '../domain/assessment.dart';
+import 'activity_info_screen.dart';
 import 'assessments_grid.dart';
 import 'participants_list.dart';
 import 'pages_grid.dart';
 
-/// Which of the three drill-down levels (assessments grid ->
-/// participants list -> pages grid) is currently shown. Held here in
-/// the shell rather than via Navigator push, since the whole flow stays
-/// inside one tab and a simple breadcrumb suffices.
+/// Which of the four drill-down levels (assessments grid -> activity
+/// info -> participants list -> pages grid) is currently shown. Held
+/// here in the shell rather than via Navigator push, since the whole
+/// flow stays inside one tab and a simple breadcrumb suffices.
 sealed class _AssessmentsView {
   const _AssessmentsView();
 }
@@ -18,15 +19,22 @@ class _AtAssessments extends _AssessmentsView {
   const _AtAssessments();
 }
 
-class _AtParticipants extends _AssessmentsView {
-  const _AtParticipants(this.assessment);
+class _AtActivityInfo extends _AssessmentsView {
+  const _AtActivityInfo(this.assessment);
   final Assessment assessment;
 }
 
+class _AtParticipants extends _AssessmentsView {
+  const _AtParticipants(this.assessment, this.variant);
+  final Assessment assessment;
+  final ScanVariant variant;
+}
+
 class _AtPages extends _AssessmentsView {
-  const _AtPages(this.assessment, this.participant);
+  const _AtPages(this.assessment, this.participant, this.variant);
   final Assessment assessment;
   final Participant participant;
+  final ScanVariant variant;
 }
 
 enum AssessmentFilter { all, exams, activities }
@@ -42,24 +50,32 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
   _AssessmentsView _view = const _AtAssessments();
   AssessmentFilter _filter = AssessmentFilter.all;
 
-  // Locked default per earlier decision — raw scans load first; a
-  // toggle to switch variants can be added to the app bar later.
-  final ScanVariant _variant = ScanVariant.raw;
-
   void _openAssessment(Assessment assessment) {
-    setState(() => _view = _AtParticipants(assessment));
+    setState(() => _view = _AtActivityInfo(assessment));
   }
 
-  void _openParticipant(Assessment assessment, Participant participant) {
-    setState(() => _view = _AtPages(assessment, participant));
+  void _openVariant(Assessment assessment, ScanVariant variant) {
+    setState(() => _view = _AtParticipants(assessment, variant));
+  }
+
+  void _openParticipant(
+    Assessment assessment,
+    Participant participant,
+    ScanVariant variant,
+  ) {
+    setState(() => _view = _AtPages(assessment, participant, variant));
   }
 
   void _goToAssessments() {
     setState(() => _view = const _AtAssessments());
   }
 
-  void _goToParticipants(Assessment assessment) {
-    setState(() => _view = _AtParticipants(assessment));
+  void _goToActivityInfo(Assessment assessment) {
+    setState(() => _view = _AtActivityInfo(assessment));
+  }
+
+  void _goToParticipants(Assessment assessment, ScanVariant variant) {
+    setState(() => _view = _AtParticipants(assessment, variant));
   }
 
   @override
@@ -81,7 +97,8 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
                     _Breadcrumb(
                       view: _view,
                       onAssessments: _goToAssessments,
-                      onAssessment: _goToParticipants,
+                      onActivityInfo: _goToActivityInfo,
+                      onParticipants: _goToParticipants,
                     ),
                     const SizedBox(height: 16),
                     Expanded(child: _buildBody()),
@@ -106,10 +123,18 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
       );
     }
 
+    if (view is _AtActivityInfo) {
+      return ActivityInfoScreen(
+        assessment: view.assessment,
+        onOpenVariant: (variant) => _openVariant(view.assessment, variant),
+      );
+    }
+
     if (view is _AtParticipants) {
       return ParticipantsList(
         assessment: view.assessment,
-        onOpen: (participant) => _openParticipant(view.assessment, participant),
+        onOpen: (participant) =>
+            _openParticipant(view.assessment, participant, view.variant),
       );
     }
 
@@ -117,7 +142,7 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
       return PagesGrid(
         assessment: view.assessment,
         participant: view.participant,
-        variant: _variant,
+        variant: view.variant,
       );
     }
 
@@ -129,12 +154,14 @@ class _Breadcrumb extends StatelessWidget {
   const _Breadcrumb({
     required this.view,
     required this.onAssessments,
-    required this.onAssessment,
+    required this.onActivityInfo,
+    required this.onParticipants,
   });
 
   final _AssessmentsView view;
   final VoidCallback onAssessments;
-  final ValueChanged<Assessment> onAssessment;
+  final ValueChanged<Assessment> onActivityInfo;
+  final void Function(Assessment, ScanVariant) onParticipants;
 
   @override
   Widget build(BuildContext context) {
@@ -143,12 +170,28 @@ class _Breadcrumb extends StatelessWidget {
     ];
 
     final v = view;
-    if (v is _AtParticipants) {
+    if (v is _AtActivityInfo) {
       crumbs.add(_separator());
       crumbs.add(_crumb(v.assessment.name, null, isLast: true));
+    } else if (v is _AtParticipants) {
+      crumbs.add(_separator());
+      crumbs.add(_crumb(
+        v.assessment.name,
+        () => onActivityInfo(v.assessment),
+      ));
+      crumbs.add(_separator());
+      crumbs.add(_crumb(v.variant.label, null, isLast: true));
     } else if (v is _AtPages) {
       crumbs.add(_separator());
-      crumbs.add(_crumb(v.assessment.name, () => onAssessment(v.assessment)));
+      crumbs.add(_crumb(
+        v.assessment.name,
+        () => onActivityInfo(v.assessment),
+      ));
+      crumbs.add(_separator());
+      crumbs.add(_crumb(
+        v.variant.label,
+        () => onParticipants(v.assessment, v.variant),
+      ));
       crumbs.add(_separator());
       crumbs.add(_crumb(v.participant.code, null, isLast: true));
     }

@@ -7,6 +7,9 @@ pydantic-settings==2.6.1
 # firestore.rules by design.
 firebase-admin==6.6.0
 
+# Google Drive access for the Raw -> Cleaned pipeline (app/services/drive_client.py)
+google-api-python-client==2.140.0
+
 # Recognition layer (Figure 1 / Figure 6)
 torch==2.5.1
 transformers==4.46.3
@@ -22,6 +25,8 @@ statsmodels==0.14.4    # Wilson confidence interval
 
 # Image preprocessing (Figure H-1: Crop, Deskew, Denoise, Binarize, Resize)
 opencv-python-headless==4.10.0.84
+
+eval_type_backport==0.2.2
 
 python-multipart==0.0.17
 python-dotenv==1.0.1

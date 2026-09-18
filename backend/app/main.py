@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import evaluation, model_versions, retraining, runs
+from app.api import clean, crop, evaluation, model_versions, retraining, runs
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -15,7 +15,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_allow_origins,
+    allow_origin_regex=r"http://localhost:\d+",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -24,6 +24,8 @@ app.include_router(runs.router)
 app.include_router(evaluation.router)
 app.include_router(model_versions.router)
 app.include_router(retraining.router)
+app.include_router(clean.router)
+app.include_router(crop.router)
 
 
 @app.get("/health")

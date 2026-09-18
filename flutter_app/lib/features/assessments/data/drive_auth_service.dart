@@ -22,7 +22,13 @@ const _webClientId = '848916890161-iuanv4mmtmls9221fe1shvh7qn5h43qf.apps.googleu
 
 const _iosClientId = '848916890161-eeuons4mraa590lv0fpeltl7il3h28n0.apps.googleusercontent.com';
 
-const _driveReadonlyScope = 'https://www.googleapis.com/auth/drive.readonly';
+// Widened from drive.readonly: the backend now uploads Cleaned scans
+// under the *signed-in user's* own Drive quota (service accounts have
+// none of their own — see DriveImportService/clean.py notes). Existing
+// read-only usage (downloadPageBytes, import) is unaffected by the
+// wider scope; only the clean-job upload path relies on the extra
+// write permission.
+const _driveScope = 'https://www.googleapis.com/auth/drive';
 
 class DriveAuthService {
   // Static, not instance-level: GoogleSignIn.instance is a process-wide
@@ -130,8 +136,8 @@ class DriveAuthService {
   }
 
   /// Full session restore, run ONCE per app launch. Warms the
-  /// drive.readonly AUTHORIZATION from cache only (never prompts) —
-  /// see PagesGrid/AssessmentsScreen for where this is kicked off.
+  /// drive AUTHORIZATION from cache only (never prompts) — see
+  /// PagesGrid/AssessmentsScreen for where this is kicked off.
   Future<bool> restoreSession() {
     return _restoreFuture ??= _doRestoreSession();
   }
@@ -142,7 +148,7 @@ class DriveAuthService {
 
     try {
       final cached = await _currentAccount!.authorizationClient
-          .authorizationForScopes([_driveReadonlyScope]);
+          .authorizationForScopes([_driveScope]);
       if (cached != null) _cachedAuthorization = cached;
     } catch (_) {
       // Not fatal — the first real Drive call falls back to an
@@ -165,6 +171,11 @@ class DriveAuthService {
   /// wrapping GestureDetector/InkWell, those can't intercept iframe
   /// clicks). Elsewhere it's a normal button using the interactive
   /// picker. Call [ensureReady] before building this.
+  ///
+  /// [text] controls the button's label/copy: 'signin_with' (default),
+  /// 'signup_with', 'continue_with', or 'signin'. On web it's mapped to
+  /// GSIButtonText and forwarded to Google's renderButton; on
+  /// native/desktop it just swaps the fallback button's label.
   Widget buildSignInButton({String text = 'signin_with'}) {
     if (kIsWeb) {
       return renderGoogleSignInButton(text: text);
@@ -208,9 +219,9 @@ class DriveAuthService {
 
   Future<GoogleSignInClientAuthorization> _doAuthorize() async {
     var authorization = await _currentAccount!.authorizationClient
-        .authorizationForScopes([_driveReadonlyScope]);
+        .authorizationForScopes([_driveScope]);
     authorization ??= await _currentAccount!.authorizationClient
-        .authorizeScopes([_driveReadonlyScope]);
+        .authorizeScopes([_driveScope]);
     return authorization;
   }
 
@@ -228,11 +239,28 @@ class DriveAuthService {
     return _BearerTokenClient(authorization.accessToken);
   }
 
+  /// Returns the raw OAuth access token for the current Drive
+  /// authorization — needed when a request (like the clean-job trigger)
+  /// must forward the token to the backend rather than use it locally.
+  Future<String> getAccessToken() async {
+    await _ensureInitialized();
+
+    if (_currentAccount == null) {
+      throw StateError(
+        'Not signed in to Google Drive yet — show buildSignInButton() '
+        'and wait for onSignInChanged before calling this.',
+      );
+    }
+
+    final authorization = await _getAuthorization();
+    return authorization.accessToken;
+  }
+
   /// The unification point: called once a Google account is already
   /// authenticated (via [signInInteractively] on native, or the web
   /// button + [onSignInChanged] on web — see LoginScreen), this
   /// returns the ID token Firebase needs for
-  /// GoogleAuthProvider.credential, AND warms the drive.readonly
+  /// GoogleAuthProvider.credential, AND warms the drive
   /// authorization in the SAME flow. The very first time a given
   /// Google account grants PROVA Drive access, this may still show a
   /// second, scope-specific consent screen — Google always separates
