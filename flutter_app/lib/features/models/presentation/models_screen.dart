@@ -436,7 +436,43 @@ class _RetrainingHistoryCard extends StatefulWidget {
 }
 
 class _RetrainingHistoryCardState extends State<_RetrainingHistoryCard> {
-  bool _expanded = false;
+  // Expanded by default to match the reference screenshot.
+  bool _expanded = true;
+
+  // TODO: replace with real data from the retraining-cycle repository/provider.
+  static const List<_RetrainingCycle> _cycles = [
+    _RetrainingCycle(
+      cycle: 'Cycle 0',
+      trigger: 'Initial supervised fine-tune attempt',
+      authorizedBy: 'researcher',
+      candidate: 'clf-v0',
+      outcome: _CycleOutcome.rejected,
+      date: '2 Jun 2026',
+    ),
+    _RetrainingCycle(
+      cycle: 'Cycle A',
+      trigger: 'OCR LoRA fine-tune on MathWriting',
+      authorizedBy: 'researcher',
+      candidate: 'ocr-v1',
+      outcome: _CycleOutcome.promoted,
+      date: '28 Jun 2026',
+    ),
+    _RetrainingCycle(
+      cycle: 'Cycle 1',
+      trigger: 'Domain-adaptation epoch ablation (0/3/10/20)',
+      authorizedBy: 'researcher',
+      candidate: 'clf-v1',
+      outcome: _CycleOutcome.promoted,
+      date: '10 Jul 2026',
+    ),
+  ];
+
+  static const TextStyle _headerStyle = TextStyle(
+    color: _Palette.mutedText,
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0.4,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -472,13 +508,146 @@ class _RetrainingHistoryCardState extends State<_RetrainingHistoryCard> {
             ),
           ),
           if (_expanded) ...[
-            const SizedBox(height: 14),
-            const Text(
-              // TODO: replace with the real retraining-cycle history.
-              'No retraining cycles recorded yet.',
-              style: TextStyle(color: _Palette.mutedText, fontSize: 14),
+            const SizedBox(height: 18),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(flex: 2, child: Text('CYCLE', style: _headerStyle)),
+                  Expanded(
+                    flex: 5,
+                    child: Text('TRIGGER', style: _headerStyle),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text('AUTHORIZED BY', style: _headerStyle),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text('CANDIDATE', style: _headerStyle),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text('OUTCOME', style: _headerStyle),
+                  ),
+                  Expanded(flex: 2, child: Text('DATE', style: _headerStyle)),
+                ],
+              ),
             ),
+            const Divider(height: 1, color: _Palette.divider),
+            for (int i = 0; i < _cycles.length; i++) ...[
+              _RetrainingCycleRow(cycle: _cycles[i]),
+              if (i != _cycles.length - 1)
+                const Divider(height: 1, color: _Palette.divider),
+            ],
           ],
+        ],
+      ),
+    );
+  }
+}
+
+enum _CycleOutcome { promoted, rejected }
+
+class _RetrainingCycle {
+  const _RetrainingCycle({
+    required this.cycle,
+    required this.trigger,
+    required this.authorizedBy,
+    required this.candidate,
+    required this.outcome,
+    required this.date,
+  });
+
+  final String cycle;
+  final String trigger;
+  final String authorizedBy;
+  final String candidate;
+  final _CycleOutcome outcome;
+  final String date;
+}
+
+class _RetrainingCycleRow extends StatelessWidget {
+  const _RetrainingCycleRow({required this.cycle});
+
+  final _RetrainingCycle cycle;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool promoted = cycle.outcome == _CycleOutcome.promoted;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              cycle.cycle,
+              style: const TextStyle(
+                color: _Palette.titleBlack,
+                fontWeight: FontWeight.w600,
+                fontSize: 14.5,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 5,
+            child: Text(
+              cycle.trigger,
+              style: const TextStyle(color: _Palette.bodyText, fontSize: 14),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              cycle.authorizedBy,
+              style: const TextStyle(color: _Palette.mutedText, fontSize: 14),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              cycle.candidate,
+              style: const TextStyle(
+                color: _Palette.bodyText,
+                fontSize: 14,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: promoted ? _Palette.accentGreenSoft : _Palette.redBg,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  promoted ? 'Promoted' : 'Rejected',
+                  style: TextStyle(
+                    color: promoted ? _Palette.accentGreen : _Palette.redText,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              cycle.date,
+              style: const TextStyle(color: _Palette.mutedText, fontSize: 14),
+            ),
+          ),
         ],
       ),
     );
