@@ -76,7 +76,8 @@ class AssessmentsGrid extends ConsumerWidget {
               child: filtered.isEmpty
                   ? const Center(child: Text('No assessments yet.'))
                   : GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 4,
                         mainAxisSpacing: 16,
                         crossAxisSpacing: 16,
@@ -219,6 +220,11 @@ class AssessmentsGrid extends ConsumerWidget {
 
     final name = nameController.text.trim();
 
+    // Created already in the 'processing' state so the bottom-right
+    // progress popup appears the instant the doc lands in the stream —
+    // covering the whole Drive scan, not just the final write phase.
+    // importTotalPages: 0 is what puts the popup in its indeterminate
+    // "Scanning Drive…" mode until the real total is known.
     final examRef =
         await FirebaseFirestore.instance.collection(FirestorePaths.exams).add({
       'name': name,
@@ -226,18 +232,19 @@ class AssessmentsGrid extends ConsumerWidget {
       'status': AssessmentStatus.incomplete.name,
       'participantCount': 0,
       'pageCount': 0,
+      'importStatus': 'processing',
+      'importedPageCount': 0,
+      'importTotalPages': 0,
+      'importScanned': 0,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
     if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Importing from Drive… this can take a moment.'),
-      ),
-    );
-
+    // The popup in the bottom-right is now the live indicator, so the
+    // old "Importing from Drive…" snackbar is dropped — it only said
+    // the same thing less usefully and then vanished.
     try {
       final count =
           await ref.read(driveImportServiceProvider).importExam(examRef.id, name);

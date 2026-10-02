@@ -4,6 +4,7 @@ import '../../../core/widgets/header_banner.dart';
 import '../domain/assessment.dart';
 import 'activity_info_screen.dart';
 import 'assessments_grid.dart';
+import 'job_progress_popup.dart';
 import 'participants_list.dart';
 import 'pages_grid.dart';
 
@@ -81,33 +82,42 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            const ProvaHeaderBanner(
-              pageTitle: 'Assessments',
-              stage: PipelineStage.notApplicable,
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _Breadcrumb(
-                      view: _view,
-                      onAssessments: _goToAssessments,
-                      onActivityInfo: _goToActivityInfo,
-                      onParticipants: _goToParticipants,
-                    ),
-                    const SizedBox(height: 16),
-                    Expanded(child: _buildBody()),
-                  ],
+      // Stack so the import / clean / crop progress popup can float
+      // bottom-right above whichever drill-down level is showing. It
+      // reads Firestore state itself, so it keeps updating while you
+      // navigate between levels and disappears when no job is running.
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                const ProvaHeaderBanner(
+                  pageTitle: 'Assessments',
+                  stage: PipelineStage.notApplicable,
                 ),
-              ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _Breadcrumb(
+                          view: _view,
+                          onAssessments: _goToAssessments,
+                          onActivityInfo: _goToActivityInfo,
+                          onParticipants: _goToParticipants,
+                        ),
+                        const SizedBox(height: 16),
+                        Expanded(child: _buildBody()),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          const JobProgressPopup(),
+        ],
       ),
     );
   }
