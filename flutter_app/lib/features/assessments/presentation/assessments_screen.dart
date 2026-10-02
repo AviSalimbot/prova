@@ -4,12 +4,14 @@ import '../../../core/widgets/header_banner.dart';
 import '../domain/assessment.dart';
 import 'activity_info_screen.dart';
 import 'assessments_grid.dart';
+import 'cropped_items_view.dart';
 import 'job_progress_popup.dart';
 import 'participants_list.dart';
 import 'pages_grid.dart';
 
-/// Which of the four drill-down levels (assessments grid -> activity
-/// info -> participants list -> pages grid) is currently shown. Held
+/// Which drill-down level (assessments grid -> activity info ->
+/// participants list -> pages grid, or for the Cropped tree: participants
+/// -> item folders -> item images) is currently shown. Held
 /// here in the shell rather than via Navigator push, since the whole
 /// flow stays inside one tab and a simple breadcrumb suffices.
 sealed class _AssessmentsView {
@@ -38,6 +40,21 @@ class _AtPages extends _AssessmentsView {
   final ScanVariant variant;
 }
 
+/// Cropped tree only: P001 -> item folders (N001, N002, ...).
+class _AtCroppedItems extends _AssessmentsView {
+  const _AtCroppedItems(this.assessment, this.participant);
+  final Assessment assessment;
+  final Participant participant;
+}
+
+/// Cropped tree only: N001 -> that item's solution + answer crops.
+class _AtCroppedItemImages extends _AssessmentsView {
+  const _AtCroppedItemImages(this.assessment, this.participant, this.item);
+  final Assessment assessment;
+  final Participant participant;
+  final CroppedItem item;
+}
+
 enum AssessmentFilter { all, exams, activities }
 
 class AssessmentsScreen extends StatefulWidget {
@@ -64,7 +81,25 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
     Participant participant,
     ScanVariant variant,
   ) {
-    setState(() => _view = _AtPages(assessment, participant, variant));
+    // In the Cropped tree a participant folder holds item folders, not
+    // pages, so it opens the item list instead of the page grid.
+    setState(() {
+      _view = variant == ScanVariant.cropped
+          ? _AtCroppedItems(assessment, participant)
+          : _AtPages(assessment, participant, variant);
+    });
+  }
+
+  void _openCroppedItem(
+    Assessment assessment,
+    Participant participant,
+    CroppedItem item,
+  ) {
+    setState(() => _view = _AtCroppedItemImages(assessment, participant, item));
+  }
+
+  void _goToCroppedItems(Assessment assessment, Participant participant) {
+    setState(() => _view = _AtCroppedItems(assessment, participant));
   }
 
   void _goToAssessments() {
@@ -106,6 +141,7 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
                           onAssessments: _goToAssessments,
                           onActivityInfo: _goToActivityInfo,
                           onParticipants: _goToParticipants,
+                          onCroppedItems: _goToCroppedItems,
                         ),
                         const SizedBox(height: 16),
                         Expanded(child: _buildBody()),
@@ -143,6 +179,7 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
     if (view is _AtParticipants) {
       return ParticipantsList(
         assessment: view.assessment,
+        variant: view.variant,
         onOpen: (participant) =>
             _openParticipant(view.assessment, participant, view.variant),
       );
@@ -156,6 +193,21 @@ class _AssessmentsScreenState extends State<AssessmentsScreen> {
       );
     }
 
+    if (view is _AtCroppedItems) {
+      return CroppedItemFolders(
+        participant: view.participant,
+        onOpen: (item) =>
+            _openCroppedItem(view.assessment, view.participant, item),
+      );
+    }
+
+    if (view is _AtCroppedItemImages) {
+      return CroppedItemImages(
+        participant: view.participant,
+        item: view.item,
+      );
+    }
+
     return const SizedBox.shrink();
   }
 }
@@ -166,12 +218,14 @@ class _Breadcrumb extends StatelessWidget {
     required this.onAssessments,
     required this.onActivityInfo,
     required this.onParticipants,
+    required this.onCroppedItems,
   });
 
   final _AssessmentsView view;
   final VoidCallback onAssessments;
   final ValueChanged<Assessment> onActivityInfo;
   final void Function(Assessment, ScanVariant) onParticipants;
+  final void Function(Assessment, Participant) onCroppedItems;
 
   @override
   Widget build(BuildContext context) {
@@ -204,6 +258,37 @@ class _Breadcrumb extends StatelessWidget {
       ));
       crumbs.add(_separator());
       crumbs.add(_crumb(v.participant.code, null, isLast: true));
+    } else if (v is _AtCroppedItems) {
+      crumbs.add(_separator());
+      crumbs.add(_crumb(
+        v.assessment.name,
+        () => onActivityInfo(v.assessment),
+      ));
+      crumbs.add(_separator());
+      crumbs.add(_crumb(
+        ScanVariant.cropped.label,
+        () => onParticipants(v.assessment, ScanVariant.cropped),
+      ));
+      crumbs.add(_separator());
+      crumbs.add(_crumb(v.participant.code, null, isLast: true));
+    } else if (v is _AtCroppedItemImages) {
+      crumbs.add(_separator());
+      crumbs.add(_crumb(
+        v.assessment.name,
+        () => onActivityInfo(v.assessment),
+      ));
+      crumbs.add(_separator());
+      crumbs.add(_crumb(
+        ScanVariant.cropped.label,
+        () => onParticipants(v.assessment, ScanVariant.cropped),
+      ));
+      crumbs.add(_separator());
+      crumbs.add(_crumb(
+        v.participant.code,
+        () => onCroppedItems(v.assessment, v.participant),
+      ));
+      crumbs.add(_separator());
+      crumbs.add(_crumb(v.item.label, null, isLast: true));
     }
 
     return Row(

@@ -327,6 +327,7 @@ class Participant {
     required this.code,
     required this.pageCount,
     required this.status,
+    this.croppedItemCount = 0,
   });
 
   final String id;
@@ -334,6 +335,11 @@ class Participant {
   final String code;
   final int pageCount;
   final AssessmentStatus status;
+
+  /// Number of item folders (N001, N002, ...) the crop job produced for
+  /// this participant. Written by the backend's /crop/exam; 0 until
+  /// the exam has been cropped.
+  final int croppedItemCount;
 
   factory Participant.fromMap(String id, Map<String, dynamic> map) {
     return Participant(
@@ -344,6 +350,7 @@ class Participant {
       status: AssessmentStatus.fromRaw(
         (map['status'] as String?) ?? 'complete',
       ),
+      croppedItemCount: (map['croppedItemCount'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -386,6 +393,50 @@ class AssessmentPage {
       pageNumber: (map['pageNumber'] as num?)?.toInt() ?? 0,
       driveFileIds: ids,
       scanStatus: (map['scanStatus'] as String?) ?? 'scanned_ok',
+    );
+  }
+}
+
+/// `croppedItems/{participantId}__{item}` — one document per item the
+/// crop job produced for a participant. Corresponds to one Drive folder
+/// (`N001`, `N002`, ...) holding that item's solution crops and its
+/// final-answer crop. Drive file IDs only; bytes are downloaded on demand.
+class CroppedItem {
+  const CroppedItem({
+    required this.id,
+    required this.participantId,
+    required this.item,
+    required this.label,
+    required this.solutionFileIds,
+    required this.answerFileId,
+  });
+
+  final String id;
+  final String participantId;
+
+  /// Item number as read from the page (or assigned by page order).
+  final int item;
+
+  /// Drive folder name, e.g. "N001".
+  final String label;
+  final List<String> solutionFileIds;
+  final String? answerFileId;
+
+  int get imageCount => solutionFileIds.length + (answerFileId != null ? 1 : 0);
+
+  factory CroppedItem.fromMap(String id, Map<String, dynamic> map) {
+    final item = (map['item'] as num?)?.toInt() ?? 0;
+    return CroppedItem(
+      id: id,
+      participantId: (map['participantId'] as String?) ?? '',
+      item: item,
+      label: (map['label'] as String?) ??
+          'N${item.toString().padLeft(3, '0')}',
+      solutionFileIds: [
+        for (final v in (map['solutionFileIds'] as List<dynamic>? ?? const []))
+          v as String,
+      ],
+      answerFileId: map['answerFileId'] as String?,
     );
   }
 }
