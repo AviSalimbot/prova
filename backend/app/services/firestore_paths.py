@@ -16,3 +16,4 @@ class FirestorePaths:
     MODEL_VERSIONS = "model_versions"
     RETRAINING_CYCLES = "retraining_cycles"
     PARTICIPANTS = "participants"
+    CROPPED_ITEMS = "croppedItems"

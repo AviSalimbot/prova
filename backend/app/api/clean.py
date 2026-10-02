@@ -102,6 +102,26 @@ def clean_exam(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _fetch_already_cleaned_page_ids(db, exam_id: str) -> set:
+    """Returns the set of page doc IDs that already have a cleanedFileId
+    from a previous run of this job. Fetched once, up front, as a single
+    query rather than a per-page .get() -- cheaper, and it's what makes
+    the per-page skip check below a plain in-memory lookup.
+
+    This is what makes re-clicking "Clean" after a partial failure safe:
+    Drive uploads aren't idempotent the way the Firestore page-doc write
+    is, so re-processing an already-cleaned page would leave a duplicate,
+    orphaned file sitting in the Cleaned Drive folder alongside the one
+    from the successful run.
+    """
+    docs = (
+        db.collection(FirestorePaths.PAGES)
+        .where("examId", "==", exam_id)
+        .stream()
+    )
+    return {doc.id for doc in docs if (doc.to_dict() or {}).get("cleanedFileId")}
+
+
 def _run_clean_job(
     db, settings, exam_id: str, exam_name: str, drive_access_token: str
 ) -> int:
@@ -121,6 +141,8 @@ def _run_clean_job(
     participant_folders = drive_client.list_child_folders(
         service, raw_exam_folder["id"]
     )
+
+    already_cleaned_page_ids = _fetch_already_cleaned_page_ids(db, exam_id)
 
     batch = db.batch()
     writes_in_batch = 0
@@ -148,6 +170,19 @@ def _run_clean_job(
             if not match:
                 continue
             page_number = int(match.group(1))
+            page_id = f"{participant_id}__{page_number}"
+
+            if page_id in already_cleaned_page_ids:
+                # Already cleaned and uploaded by a previous run -- skip
+                # the Drive download/clean/upload entirely and just
+                # count it, so a resumed job's progress bar still
+                # reflects the TOTAL page count (matching pageCount),
+                # not only the pages this particular run had to redo.
+                total_cleaned += 1
+                exam_ref.update(
+                    {"cleanedPageCount": Increment(1), "updatedAt": SERVER_TIMESTAMP}
+                )
+                continue
 
             raw_bytes = drive_client.download_file_bytes(service, f["id"])
             img = _decode_image(raw_bytes)
@@ -162,7 +197,6 @@ def _run_clean_job(
                 mime_type="image/png",
             )
 
-            page_id = f"{participant_id}__{page_number}"
             page_ref = db.collection(FirestorePaths.PAGES).document(page_id)
             batch.set(
                 page_ref,

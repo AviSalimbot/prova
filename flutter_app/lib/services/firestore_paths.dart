@@ -16,4 +16,5 @@ class FirestorePaths {
   static const modelVersions = 'model_versions';
   static const retrainingCycles = 'retraining_cycles';
   static const participants = 'participants';
+  static const croppedItems = 'croppedItems';
 }

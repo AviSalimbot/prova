@@ -30,3 +30,10 @@ eval_type_backport==0.2.2
 
 python-multipart==0.0.17
 python-dotenv==1.0.1
+
+# Google Drive access for the Raw -> Cleaned pipeline (app/services/drive_client.py)
+google-api-python-client==2.140.0
+# Already installed transitively via google-api-python-client, but pinned
+# explicitly now that drive_client.py imports it directly (for the
+# AuthorizedHttp wrapper used to set a request timeout).
+google-auth-httplib2==0.2.0
