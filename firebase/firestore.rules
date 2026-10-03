@@ -159,5 +159,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /croppedItems/{id} {
+      allow read: if isAdmin() || isAnnotator() || isAdjudicator();
+      allow write: if false;   // only the backend (Admin SDK) writes these
+    }
+
   }
 }
